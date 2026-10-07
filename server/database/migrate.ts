@@ -53,9 +53,17 @@ export async function runMigrations(): Promise<void> {
         console.log(`[Migration] Applying migration: ${file}...`);
         const filePath = path.join(migrationsDir, file);
         const sql = fs.readFileSync(filePath, 'utf-8');
-        
+
+        // Split into individual statements so each runs separately
+        const statements = sql
+          .split(';')
+          .map(s => s.trim())
+          .filter(s => s.length > 0 && !s.startsWith('--'));
+
         await pool.query('BEGIN');
-        await pool.query(sql);
+        for (const statement of statements) {
+          await pool.query(statement);
+        }
         await pool.query('INSERT INTO schema_migrations (filename) VALUES ($1)', [file]);
         await pool.query('COMMIT');
         console.log(`[Migration] Successfully applied: ${file}`);
