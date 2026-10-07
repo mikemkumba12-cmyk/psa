@@ -1,0 +1,15 @@
+/**
+ * Shared mock media references.
+ *
+ * Future backend integration: replace remote fixture URLs with signed media
+ * URLs returned by the content/profile service.
+ */
+
+export const MR_PHIRI_AVATAR =
+  'https://lh3.googleusercontent.com/aida-public/AB6AXuBWBxjSs1oLgTKZ_kRhXTgi3qbKC6OxOBAXY5585FDkTRnwlOLEmpNpehu0aNeRfHfFmYB2gMt06plvCHaKVAmajyExtEnPVfe4tkfLIPRuvrh6fvP116F2rQ0f4woPrmqKxQeq1Veg0HCuvmsaIZ9KAwV2jBZeg92iDERGTzbz2uG4H2AUrB6_Y8_W7JJdUkSww2jnE28OxU9lKoR_T7eVBeudUG2hvUADBhJi0gpFOQGF6OiyT0jK';
+
+export const MERCY_PHIRI_AVATAR =
+  'https://lh3.googleusercontent.com/aida-public/AB6AXuADCk3R0k7GqoZ-V-5QwsZUhnYyYbAwbVMXNWVe2BxSR4ObaNCTvph1vhMzzWpeTJUNnhcS3dQ7hSzSgO6rLsJg4242RRYe4_vCUBe6QZA1lU3dvqtxlGQP2fw4w_Ckdhxs3xTZtHg8iJpk6XsDNLc2sRx6oUxg_TYM5SFZ1bCLZQCdsMfh5XS_duZfX4NlSHXweIZUDMP-tUGpFky-0m2YUKJhP_hITEOhYlasI5-_ThBvOwRmQ-nL';
+
+export const DAVID_MWALE_AVATAR =
+  'https://lh3.googleusercontent.com/aida-public/AB6AXuAYaxlIaCsQUwgKwT7N8xBOaWwCsXK-YXeZbsHcFMCaJvXO3yOmoMMw0b3Fsz3lYidFvDXtbxg5pmbRns2OKuQPwVnzJ3REdE8GNyfpVlOaBRquZXs-N3YX8FoYsap51p6ltaveDZKlpFDI_MUGcoGqFxY-W3UWPX8kpCCrMC00Fu-l1ImEPTXIe4ql_vqZKhQKhrn0gmoaYALTNGo31IaHw9fxo7wf4EyNJ8-YGYQ6iplPrhjEvVOJ';

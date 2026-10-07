@@ -1,0 +1,19 @@
+employee_id,customer_name,employer,amount,month
+EMP-001,"Jabulani Mayenda","Ministry of Education",85000,2026-08
+EMP-002,"Joel Phiri","Ministry of Education",95000,2026-08
+EMP-8842,"Samuel Chimwala","Ministry of Agriculture",920000,2026-08
+EMP-2940,"Bright Kamwendo","ESCOM Malawi",769722,2026-08
+EMP-4492,"Blessings Kamau","Ministry of Trade & Industry",378667,2026-08
+EMP-1022,"Mphatso Mwale","Blantyre City Council",142000,2026-08
+EMP-3482,"Kondwani Msiska","Ministry of Transport & Public Works",1841667,2026-08
+EMP-5001,"Chisomo Nyasulu","Ministry of Agriculture",151250,2026-08
+EMP-6120,"Thandiwe Chirwa","Ministry of Education",407500,2026-08
+EMP-7100,"Wisdom Zimba","Malawi Police Service",100833,2026-08
+EMP-0010,"Innocent Mvula","Ministry of Transport & Public Works",1326000,2026-08
+EMP-0011,"Precious Lungu","Ministry of Forestry & Natural Resources",284000,2026-08
+EMP-0012,"Gift Tembo","Malawi Telecommunications Ltd (MTL)",815000,2026-08
+EMP-0013,"Stella Nkosi","Ministry of Education",414167,2026-08
+EMP-0014,"Memory Phiri","Ministry of Tourism",1620667,2026-08
+EMP-0018,"Faith Kabwila","Ministry of Education",150000,2026-08
+EMP-0020,"Lusungu Dziko","Ministry of Agriculture",220000,2026-08
+EMP-9999,"Unknown Test Employee","Ministry of Education",85000,2026-08

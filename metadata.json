@@ -1,0 +1,6 @@
+{
+  "name": "PINACO Smart Advisor",
+  "description": "A comprehensive microfinance platform and admin dashboard for SME borrowers and financial advisors.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
