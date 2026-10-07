@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users2, PieChart, Coins, LogOut,
-  Sun, Moon, Menu, X, Brain, BarChart3, Building2, UserCheck, FileSpreadsheet,
+  Menu, X, Brain, BarChart3, Building2, UserCheck, FileSpreadsheet,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 
@@ -18,7 +18,7 @@ const NAV_ITEMS = [
 ];
 
 export default function AdminLayout() {
-  const { session, logout, theme, toggleTheme } = useAuth();
+  const { session, logout } = useAuth();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -85,10 +85,7 @@ export default function AdminLayout() {
               </p>
             </div>
           </div>
-          <button onClick={toggleTheme} className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-bold text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-            {theme === 'dark' ? <Sun className="w-4 h-4 text-yellow-400" /> : <Moon className="w-4 h-4" />}
-            {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
-          </button>
+
           <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors">
             <LogOut className="w-4 h-4" /> Sign Out
           </button>
@@ -110,10 +107,7 @@ export default function AdminLayout() {
           </NavLink>
         ))}
         <div className="flex-1" />
-        <button onClick={toggleTheme} title="Toggle theme" className="w-10 h-10 rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center">
-          {theme === 'dark' ? <Sun className="w-4 h-4 text-yellow-400" /> : <Moon className="w-4 h-4" />}
-        </button>
-        <button onClick={handleLogout} title="Sign out" className="w-10 h-10 rounded-xl text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 flex items-center justify-center">
+        <button onClick={handleLogout} title="Sign out" className="w-10 h-10 rounded-xl text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 flex items-center justify-center transition-colors">
           <LogOut className="w-4 h-4" />
         </button>
       </aside>
@@ -144,10 +138,6 @@ export default function AdminLayout() {
               ))}
             </nav>
             <div className="px-3 py-3 border-t border-gray-100 dark:border-white/5 space-y-2">
-              <button onClick={toggleTheme} className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-bold text-gray-500 hover:bg-gray-50 dark:hover:bg-white/5">
-                {theme === 'dark' ? <Sun className="w-4 h-4 text-yellow-400" /> : <Moon className="w-4 h-4" />}
-                {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
-              </button>
               <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10">
                 <LogOut className="w-4 h-4" /> Sign Out
               </button>
@@ -167,9 +157,7 @@ export default function AdminLayout() {
             <div className="w-7 h-7 bg-orange-500 rounded-lg flex items-center justify-center"><Coins className="text-white w-3.5 h-3.5" /></div>
             <span className="font-black text-base text-orange-600 dark:text-orange-400">Pinnacle Staff</span>
           </div>
-          <button onClick={toggleTheme} className="w-9 h-9 rounded-xl border border-gray-200 dark:border-white/10 flex items-center justify-center">
-            {theme === 'dark' ? <Sun className="w-4 h-4 text-yellow-400" /> : <Moon className="w-4 h-4 text-gray-500" />}
-          </button>
+          <div className="w-9 h-9" />
         </header>
 
         <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-y-auto max-w-7xl mx-auto w-full">

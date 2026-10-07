@@ -292,20 +292,26 @@ export const payrollStore = {
   },
 };
 
-// ── Theme ────────────────────────────────────────────────────────────────────
+// ── Theme (Light Mode Only) ──────────────────────────────────────────────────
 export const themeStore = {
-  get: (): 'light' | 'dark' => {
-    const saved = localStorage.getItem(KEYS.THEME) as 'light' | 'dark' | null;
-    if (saved) return saved;
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  },
-  set: (theme: 'light' | 'dark'): void => {
-    localStorage.setItem(KEYS.THEME, theme);
-    document.documentElement.classList.toggle('dark', theme === 'dark');
+  get: (): 'light' => 'light',
+  set: (_theme?: 'light' | 'dark'): void => {
+    try {
+      localStorage.removeItem(KEYS.THEME);
+    } catch {
+      // ignore storage errors
+    }
+    document.documentElement.classList.remove('dark');
+    document.documentElement.classList.add('light');
   },
   init: (): void => {
-    const theme = themeStore.get();
-    document.documentElement.classList.toggle('dark', theme === 'dark');
+    try {
+      localStorage.removeItem(KEYS.THEME);
+    } catch {
+      // ignore storage errors
+    }
+    document.documentElement.classList.remove('dark');
+    document.documentElement.classList.add('light');
   },
 };
 

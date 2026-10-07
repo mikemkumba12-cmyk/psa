@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, ChevronRight, User, CreditCard, Landmark, Key, Fingerprint, Smartphone, Phone, FileText, Lock, LogOut, Bell, Sun, Moon, Edit2, CheckCircle, X, Loader2, AlertCircle } from 'lucide-react';
+import { ShieldCheck, ChevronRight, User, CreditCard, Landmark, Key, Fingerprint, Smartphone, Phone, FileText, Lock, LogOut, Bell, Edit2, CheckCircle, X, Loader2, AlertCircle } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { getUserProfile, updateUserProfile, type UserProfile } from '../auth/authService';
 import { platformApi } from '../lib/platformApi';
@@ -11,7 +11,7 @@ interface ClientProfileProps {
 }
 
 export default function ClientProfile({ onLogout, onEditDetail }: ClientProfileProps) {
-  const { session, theme, toggleTheme } = useAuth();
+  const { session } = useAuth();
   // Biometric/Device management coming in future
   const biometricEnabled = false; // Stub for now
   const [editing, setEditing] = useState(false);
@@ -227,7 +227,7 @@ export default function ClientProfile({ onLogout, onEditDetail }: ClientProfileP
       {/* Preferences */}
       <section className="space-y-2">
         <p className={sectionLabel}>Preferences</p>
-        <div className={`${cardBase} ${divider}`}>
+        <div className={`${cardBase}`}>
           <button onClick={() => onEditDetail('notifications')} className={rowBase}>
             <div className="flex items-center gap-3">
               <Bell className="w-5 h-5 text-gray-400 dark:text-gray-500" />
@@ -235,15 +235,6 @@ export default function ClientProfile({ onLogout, onEditDetail }: ClientProfileP
             </div>
             <ChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600 group-hover:translate-x-0.5 transition-transform" />
           </button>
-          <div className="flex items-center justify-between p-4">
-            <div className="flex items-center gap-3">
-              {theme === 'dark' ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-gray-400" />}
-              <span className="text-xs font-semibold text-gray-900 dark:text-white">Dark Mode</span>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer" onClick={toggleTheme}>
-              <div className={`w-10 h-6 rounded-full transition-colors ${theme === 'dark' ? 'bg-orange-500' : 'bg-gray-200'} after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all ${theme === 'dark' ? 'after:translate-x-4' : ''}`} />
-            </label>
-          </div>
         </div>
       </section>
 

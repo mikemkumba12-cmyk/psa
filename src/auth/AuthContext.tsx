@@ -52,8 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const existing = getCurrentSession();
       setSession(existing);
 
-      const savedTheme = themeStore.get();
-      setTheme(savedTheme);
+      setTheme('light');
       themeStore.init();
 
       setIsLoading(false);
@@ -146,10 +145,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const toggleTheme = useCallback(() => {
-    const next = theme === 'light' ? 'dark' : 'light';
-    setTheme(next);
-    themeStore.set(next);
-  }, [theme]);
+    setTheme('light');
+    themeStore.set('light');
+  }, []);
 
   return (
     <AuthContext.Provider value={{

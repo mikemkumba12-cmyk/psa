@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Eye, EyeOff, Coins, AlertCircle, Loader2, Sun, Moon, CheckCircle } from 'lucide-react';
+import { Eye, EyeOff, Coins, AlertCircle, Loader2, CheckCircle } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { login, theme, toggleTheme } = useAuth();
+  const { login } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -58,9 +58,6 @@ export default function LoginPage() {
           </div>
           <span className="font-black text-lg text-orange-600 dark:text-orange-400 tracking-tight">Pinnacle</span>
         </div>
-        <button onClick={toggleTheme} className="w-9 h-9 rounded-xl border border-gray-200 dark:border-white/10 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-white/10 transition-colors" aria-label="Toggle theme">
-          {theme === 'dark' ? <Sun className="w-4 h-4 text-yellow-400" /> : <Moon className="w-4 h-4 text-gray-500" />}
-        </button>
       </div>
 
       {/* Main card */}
