@@ -3,7 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light only" />
+    <meta name="theme-color" content="#fcf8f2" />
+    <meta name="supported-color-schemes" content="light" />
     <title>Pinnacle Smart Advisor</title>
+    <script>
+      (function() {
+        function enforceLight() {
+          try {
+            localStorage.removeItem('pinnacle_theme');
+            document.documentElement.classList.remove('dark');
+            document.documentElement.classList.add('light');
+            document.documentElement.setAttribute('data-theme', 'light');
+          } catch (e) {}
+        }
+        enforceLight();
+        window.addEventListener('DOMContentLoaded', enforceLight);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
