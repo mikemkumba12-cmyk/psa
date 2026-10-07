@@ -14,6 +14,7 @@
     "migrate": "tsx server/database/migrate.ts up",
     "migrate:status": "tsx server/database/migrate.ts status",
     "migrate:rollback": "tsx server/database/migrate.ts rollback",
+    "migrate:reset": "tsx server/database/migrate.ts reset",
     "test": "tsx server/tests/runner.ts"
   },
   "dependencies": {
