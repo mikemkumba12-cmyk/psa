@@ -210,10 +210,6 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 );
 
 -- Indexes for Query Performance
-CREATE INDEX IF NOT EXISTS idx_loan_applications_user ON loan_applications (user_id);
-
-CREATE INDEX IF NOT EXISTS idx_repayments_application ON repayments (application_id);
-
 CREATE INDEX IF NOT EXISTS idx_payroll_records_batch ON payroll_records (batch_id);
 
 CREATE INDEX IF NOT EXISTS idx_customer_events_customer ON customer_events (customer_id);
