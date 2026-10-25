@@ -1,48 +1,43 @@
+# Single-server deployment: API + web app + PostgreSQL.
+# Secrets come from a .env file next to this file (never commit it). Required:
+#   POSTGRES_PASSWORD, AUTH_SECRET (32+ random characters), APP_URL, WEBAUTHN_RP_ID, WEBAUTHN_ORIGINS
+# Optional: DOCUMENT_ENCRYPTION_KEY (32 bytes, base64), SENDGRID_*, AFRICASTALKING_*, ASSISTANT_OLLAMA_*
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: pinaco-smart-advisor-app
+    build: .
     restart: always
     ports:
       - "4000:4000"
+    env_file: .env
     environment:
-      - NODE_ENV=production
-      - PORT=4000
-      - DATABASE_URL=postgres://postgres:Password123!@db:5432/pinaco
-      - JWT_SECRET=prod-super-secret-jwt-key-pinnacle-mw-2026
-      - BCRYPT_ROUNDS=12
-      - APP_URL=http://localhost:4000
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgres://pinnacle:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/pinnacle
+      MIGRATE_ON_START: "true"
+    volumes:
+      # Uploaded documents and backups survive container rebuilds and redeployments.
+      - app_storage:/app/storage
     depends_on:
       db:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4000/api/health || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
 
   db:
     image: postgres:16-alpine
-    container_name: pinaco-smart-advisor-db
     restart: always
     environment:
-      - POSTGRES_DB=pinaco
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=Password123!
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: pinnacle
+      POSTGRES_USER: pinnacle
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    # Not published to the host; only the app container can reach the database.
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d pinaco"]
+      test: ["CMD-SHELL", "pg_isready -U pinnacle -d pinnacle"]
       interval: 10s
       timeout: 5s
       retries: 15
-      start_period: 60s
+      start_period: 30s
 
 volumes:
   postgres_data:
-    driver: local
+  app_storage:

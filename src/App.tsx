@@ -1,326 +1,182 @@
-import React, { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import React from 'react';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import {
+  BarChart3, Bell, BookOpen, Bot, Briefcase, Building2, ClipboardList, FileText, Home, LayoutDashboard, MessageSquare,
+  Package, ScrollText, Settings, ShieldCheck, Upload, Users, Wallet, BadgeCheck,
+} from 'lucide-react';
 import { AuthProvider, useAuth } from './auth/AuthContext';
+import { ToastProvider } from './ui/Toast';
+import { LoadingBlock } from './ui/Feedback';
+import { PortalLayout, type NavSection } from './layouts/PortalLayout';
+import { LandingPage } from './pages/public/LandingPage';
+import { LoginPage } from './pages/public/LoginPage';
+import { RegisterPage } from './pages/public/RegisterPage';
+import { ActivatePage, ForgotPasswordPage } from './pages/public/RecoveryPages';
+import { ClientHome } from './pages/client/ClientHome';
+import { ApplyPage } from './pages/client/ApplyPage';
+import { ClientApplicationDetail, ClientApplications } from './pages/client/ClientApplications';
+import { ClientDocuments } from './pages/client/ClientDocuments';
+import { BusinessDetailPage, ClientBusinessList, NewBusinessPage, StaffBusinessList } from './features/businesses/Businesses';
+import { MessagesPage } from './features/messages/Messages';
+import { AssistantPage } from './features/assistant/AssistantPage';
+import { NotificationsPage } from './features/account/NotificationsPage';
+import { SettingsPage } from './features/account/SettingsPage';
+import { StaffOverview } from './pages/staff/StaffOverview';
+import { StaffApplications } from './pages/staff/StaffApplications';
+import { ApplicationReview } from './pages/staff/ApplicationReview';
+import { StaffCustomerDetail, StaffCustomers, StaffMembers } from './pages/staff/StaffCustomers';
+import { StaffTransactions } from './pages/staff/StaffTransactions';
+import { StaffPayroll } from './pages/staff/StaffPayroll';
+import { StaffReports } from './pages/staff/StaffReports';
+import { StaffProducts } from './pages/staff/StaffProducts';
+import { StaffAdmin } from './pages/staff/StaffAdmin';
+import { StaffAudit, StaffKnowledge, StaffSettings } from './pages/staff/StaffSystem';
 
-// Pages
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
-import ForgotPasswordPage from './pages/ForgotPasswordPage';
-import MarketingPage from './components/MarketingPage';
-
-import CustomerActivationPage from './pages/CustomerActivationPage';
-
-import PayrollPage from './components/PayrollPage';
-
-// Layouts
-import ClientLayout from './layouts/ClientLayout';
-import AdminLayout from './layouts/AdminLayout';
-
-// Client views
-import ClientHome from './components/ClientHome';
-import ClientLoans from './components/ClientLoans';
-import ClientBusiness from './components/ClientBusiness';
-import ClientMessages from './components/ClientMessages';
-import ClientProfile from './components/ClientProfile';
-import ClientLoanCalculator from './components/ClientLoanCalculator';
-import DocumentUpload from './components/DocumentUpload';
-import NotificationSettings from './components/NotificationSettings';
-import ContactPinnacle from './components/ContactPinnacle';
-import ClientAIAdvisor from './components/ClientAIAdvisor';
-
-// Admin views
-import AdminOverview from './components/AdminOverview';
-import AdminCustomers from './components/AdminCustomers';
-import AdminReports from './components/AdminReports';
-import AdminReview from './components/AdminReview';
-import AdminIntelligence from './components/AdminIntelligence';
-import AdminAnalytics from './components/AdminAnalytics';
-import AdminSMEPortfolio from './components/AdminSMEPortfolio';
-import AdminStaffManagement from './components/AdminStaffManagement';
-
-// Providers
-import { ClientDataProvider, useClientData } from './context/ClientContext';
-import { AdminDataProvider, useAdminData } from './context/AdminContext';
-
-// ── Protected route guards ────────────────────────────────────────────────────
-function RequireAuth({ role, children }: { role?: 'client' | 'staff'; children: React.ReactNode }) {
-  const { session, isLoading } = useAuth();
+function RequireRole({ staff, children }: { staff: boolean; children: React.ReactNode }) {
+  const { profile, loading } = useAuth();
   const location = useLocation();
-
-  if (isLoading) return (
-    <div className="min-h-screen flex items-center justify-center bg-[#fcf8f2] dark:bg-[#121212]">
-      <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
-    </div>
-  );
-
-  if (!session) {
-    const loginPath = role === 'staff' ? '/staff/login' : '/login';
-    return <Navigate to={loginPath} state={{ from: location }} replace />;
-  }
-
-  const isCustomer = session.role === 'customer';
-  const isStaff = ['loan_officer', 'manager', 'executive', 'admin'].includes(session.role);
-
-  if (role === 'client' && !isCustomer) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
-
-  if (role === 'staff' && !isStaff) {
-    return <Navigate to="/staff/login" state={{ from: location }} replace />;
-  }
-
+  if (loading) return <div className="min-h-dvh"><LoadingBlock /></div>;
+  if (!profile) return <Navigate to={staff ? '/staff/login' : '/login'} state={{ from: location.pathname }} replace />;
+  const isStaff = profile.role !== 'customer';
+  if (staff !== isStaff) return <Navigate to={isStaff ? '/staff' : '/client'} replace />;
+  // Accounts with a temporary password must change it first.
+  if (profile.mustChangePassword && !location.pathname.endsWith('/settings')) return <Navigate to={staff ? '/staff/settings' : '/client/settings'} replace />;
   return <>{children}</>;
 }
 
-// ── Staff login page (same component, different path hint) ─────────────────
-function StaffLoginPage() {
-  return <LoginPage />;
+/** Only shows a staff page to people holding the permission it needs. The API enforces the same rule. */
+function Allow({ permission, children }: { permission: string | string[]; children: React.ReactNode }) {
+  const { can } = useAuth();
+  const needed = Array.isArray(permission) ? permission : [permission];
+  if (!needed.some(item => can(item))) return <Navigate to="/staff" replace />;
+  return <>{children}</>;
 }
 
-// ── Client portal with state management ──────────────────────────────────────
-function ClientPortal() {
-  const { logout } = useAuth();
-  const {
-    applications,
-    repayments,
-    chats,
-    alerts,
-    toast,
-    triggerToast,
-    handlePayInstallment,
-    handleSubmitApplication,
-    handleClearUnread,
-  } = useClientData();
-  const navigate = useNavigate();
+const CLIENT_NAV: NavSection[] = [
+  { items: [
+    { to: '/client', label: 'Home', icon: Home },
+    { to: '/client/applications', label: 'My applications', icon: ClipboardList },
+    { to: '/client/apply', label: 'Apply for a loan', icon: Wallet },
+    { to: '/client/businesses', label: 'My businesses', icon: Building2 },
+    { to: '/client/documents', label: 'Documents', icon: FileText },
+  ] },
+  { title: 'Help', items: [
+    { to: '/client/messages', label: 'Messages', icon: MessageSquare },
+    { to: '/client/assistant', label: 'Assistant', icon: Bot },
+    { to: '/client/notifications', label: 'Notifications', icon: Bell },
+    { to: '/client/settings', label: 'Settings', icon: Settings },
+  ] },
+];
 
-  return (
-    <>
-      {toast && (
-        <div className="fixed top-6 right-6 z-[100] animate-in fade-in slide-in-from-top-4">
-          <div className={`px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 border text-sm font-bold ${
-            toast.type === 'success'
-              ? 'bg-green-50 border-green-200 text-green-800 dark:bg-green-500/10 dark:border-green-500/20 dark:text-green-300'
-              : 'bg-orange-50 border-orange-200 text-orange-800 dark:bg-orange-500/10 dark:border-orange-500/20 dark:text-orange-300'
-          }`}>
-            ✓ {toast.message}
-          </div>
-        </div>
-      )}
-      <Routes>
-        <Route path="home" element={<ClientHome onQuickAction={(action) => {
-          if (action === 'apply_loan' || action === 'view_loan_repayments') navigate('/client/calculator');
-          if (action === 'view_loan') navigate('/client/loans');
-          if (action === 'upload_docs') navigate('/client/documents');
-          if (action === 'contact') navigate('/client/contact');
-          if (action === 'advisor') navigate('/client/advisor');
-        }} />} />
-        <Route path="loans" element={
-          <ClientLoans
-            applications={applications}
-            repayments={repayments}
-            onPayInstallment={handlePayInstallment}
-            onRequestFinancing={() => navigate('/client/calculator')}
-          />
-        } />
-        <Route path="business" element={
-          <ClientBusiness onApplyOpportunity={() => navigate('/client/calculator')} />
-        } />
-        <Route path="messages" element={
-          <ClientMessages
-            chats={chats}
-            alerts={alerts}
-            onPayInstallment={handlePayInstallment}
-            onClearUnread={handleClearUnread}
-          />
-        } />
-        <Route path="profile" element={
-          <ClientProfile
-            onLogout={() => {
-              logout();
-              navigate('/login', { replace: true });
-            }}
-            onEditDetail={(field) => {
-              if (field === 'notifications') navigate('/client/notifications');
-              if (field === 'contact') navigate('/client/contact');
-              triggerToast(`Navigated to: ${field}`, 'info');
-            }}
-          />
-        } />
-        <Route path="calculator" element={
-          <ClientLoanCalculator
-            onBack={() => navigate('/client/home')}
-            onSubmitApplication={handleSubmitApplication}
-          />
-        } />
-        <Route path="documents" element={<DocumentUpload onBack={() => navigate('/client/home')} />} />
-        <Route path="notifications" element={<NotificationSettings onBack={() => navigate('/client/profile')} />} />
-        <Route path="contact" element={<ContactPinnacle onBack={() => navigate('/client/home')} />} />
-        <Route path="advisor" element={<ClientAIAdvisor onBack={() => navigate('/client/home')} />} />
-        <Route index element={<Navigate to="home" replace />} />
-        <Route path="*" element={<Navigate to="home" replace />} />
-      </Routes>
-    </>
-  );
+function StaffPortal() {
+  const { can } = useAuth();
+  const any = (...permissions: string[]) => permissions.some(permission => can(permission));
+  const nav: NavSection[] = [
+    { items: [
+      { to: '/staff', label: 'Overview', icon: LayoutDashboard },
+      { to: '/staff/applications', label: 'Applications', icon: ClipboardList },
+      ...(any('disbursements.record', 'disbursements.confirm', 'repayments.record', 'repayments.confirm') ? [{ to: '/staff/transactions', label: 'Transactions', icon: Wallet }] : []),
+    ] },
+    { title: 'Clients', items: [
+      ...(can('customers.view') ? [{ to: '/staff/customers', label: 'Customers', icon: Users }] : []),
+      ...(can('members.view') ? [{ to: '/staff/members', label: 'Member register', icon: BadgeCheck }] : []),
+      ...(can('businesses.view') ? [{ to: '/staff/businesses', label: 'SME businesses', icon: Briefcase }] : []),
+      ...(can('customers.view') ? [{ to: '/staff/messages', label: 'Messages', icon: MessageSquare }] : []),
+    ] },
+    { title: 'Insight', items: [
+      ...(any('reports.view', 'reports.sme') ? [{ to: '/staff/reports', label: 'Reports', icon: BarChart3 }] : []),
+      ...(can('payroll.manage') ? [{ to: '/staff/payroll', label: 'Payroll deductions', icon: Upload }] : []),
+      { to: '/staff/assistant', label: 'Assistant', icon: Bot },
+    ] },
+    { title: 'Administration', items: [
+      ...(can('products.manage') ? [{ to: '/staff/products', label: 'Loan products', icon: Package }] : []),
+      ...(any('staff.manage', 'permissions.manage') ? [{ to: '/staff/team', label: 'Staff & permissions', icon: ShieldCheck }] : []),
+      ...(can('knowledge.manage') ? [{ to: '/staff/knowledge', label: 'Assistant knowledge', icon: BookOpen }] : []),
+      ...(can('audit.view') ? [{ to: '/staff/audit', label: 'Audit log', icon: ScrollText }] : []),
+      ...(can('settings.manage') ? [{ to: '/staff/settings/institution', label: 'Institution settings', icon: Settings }] : []),
+    ] },
+    { items: [{ to: '/staff/settings', label: 'My account', icon: Settings }] },
+  ];
+  return <PortalLayout sections={nav} homePath="/staff" notificationsPath="/staff/notifications" />;
 }
 
-// ── Admin portal — individual route components (each pulls from AdminDataProvider) ──
-function AdminPortalOverview() {
-  const { applications, dashboardSummary, selectedAppId, setSelectedAppId, handleDecision } = useAdminData();
-  const navigate = useNavigate();
-  const selected = selectedAppId ? applications.find(a => a.id === selectedAppId) || null : null;
-  if (selected) {
-    return (
-      <AdminReview
-        application={selected}
-        onBack={() => setSelectedAppId(null)}
-        onUpdateStatus={handleDecision}
-      />
-    );
-  }
-  return (
-    <AdminOverview
-      applications={applications}
-      onSelectApplication={(app) => setSelectedAppId(app.id)}
-      onNavigateToTab={(tab) => navigate(`/staff/${tab}`)}
-      dashboardSummary={dashboardSummary}
-    />
-  );
-}
-
-function AdminPortalCustomers() {
-  const { customers, handleAddCustomer } = useAdminData();
-  return <AdminCustomers customers={customers} onAddCustomer={handleAddCustomer} />;
-}
-
-function AdminPortalReports() {
-  const { dashboardSummary, refreshData } = useAdminData();
-  return <AdminReports dashboardSummary={dashboardSummary} onSyncSummary={refreshData} />;
-}
-
-function AdminPortalSME() { return <AdminSMEPortfolio />; }
-function AdminPortalIntelligence() { return <AdminIntelligence />; }
-function AdminPortalAnalytics() { return <AdminAnalytics />; }
-function AdminPortalPayroll() { return <PayrollPage />; }
-function AdminPortalTeam() { return <AdminStaffManagement />; }
-
-// ── Root app ──────────────────────────────────────────────────────────────────
 function AppRoutes() {
-  const { session, isLoading } = useAuth();
-
-  if (isLoading) return (
-    <div className="min-h-screen flex items-center justify-center bg-[#fcf8f2] dark:bg-[#121212]">
-      <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
-    </div>
-  );
-
+  const { profile, loading } = useAuth();
+  if (loading) return <div className="min-h-dvh"><LoadingBlock /></div>;
+  const home = profile ? (profile.role === 'customer' ? '/client' : '/staff') : null;
   return (
     <Routes>
-      {/* Public routes */}
-      <Route path="/login" element={
-        session ? <Navigate to={session.role !== 'customer' ? '/staff' : '/client'} replace /> : <LoginPage />
-      } />
-      <Route path="/register" element={
-        session ? <Navigate to="/client" replace /> : <RegisterPage />
-      } />
+      <Route path="/" element={home ? <Navigate to={home} replace /> : <LandingPage />} />
+      <Route path="/login" element={home ? <Navigate to={home} replace /> : <LoginPage />} />
+      <Route path="/staff/login" element={home ? <Navigate to={home} replace /> : <LoginPage staff />} />
+      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/activate" element={home ? <Navigate to={home} replace /> : <ActivatePage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-      <Route path="/activate" element={<CustomerActivationPage />} />
 
-      {/* Staff login (separate URL) */}
-      <Route path="/staff/login" element={
-        session && session.role !== 'customer' ? <Navigate to="/staff" replace /> : <LoginPage />
-      } />
-
-      {/* Client portal (protected) */}
-      <Route path="/client" element={
-        <RequireAuth role="client">
-          <ClientDataProvider>
-            <ClientLayout />
-          </ClientDataProvider>
-        </RequireAuth>
-      }>
-        <Route index element={<Navigate to="home" replace />} />
-        <Route path="*" element={<ClientPortal />} />
+      <Route path="/client" element={<RequireRole staff={false}><PortalLayout sections={CLIENT_NAV} homePath="/client" notificationsPath="/client/notifications" /></RequireRole>}>
+        <Route index element={<ClientHome />} />
+        <Route path="apply" element={<ApplyPage />} />
+        <Route path="applications" element={<ClientApplications />} />
+        <Route path="applications/:id" element={<ClientApplicationDetail />} />
+        <Route path="businesses" element={<ClientBusinessList />} />
+        <Route path="businesses/new" element={<NewBusinessPage />} />
+        <Route path="businesses/:id" element={<BusinessDetailPage />} />
+        <Route path="business/:id" element={<BusinessDetailPage />} />
+        <Route path="documents" element={<ClientDocuments />} />
+        <Route path="messages" element={<MessagesPage />} />
+        <Route path="messages/:id" element={<MessagesPage />} />
+        <Route path="assistant" element={<AssistantPage />} />
+        <Route path="notifications" element={<NotificationsPage />} />
+        <Route path="settings" element={<SettingsPage />} />
+        <Route path="profile" element={<Navigate to="/client/settings" replace />} />
+        <Route path="*" element={<Navigate to="/client" replace />} />
       </Route>
 
-      {/* Staff/Admin portal (protected, separate URL) */}
-      <Route
-        path="/staff"
-        element={
-          <RequireAuth role="staff">
-            <AdminDataProvider>
-              <AdminLayout />
-            </AdminDataProvider>
-          </RequireAuth>
-        }
-      >
-        <Route index element={<Navigate to="overview" replace />} />
-        <Route path="overview" element={<AdminPortalOverview />} />
-        <Route path="customers" element={<AdminPortalCustomers />} />
-        <Route path="reports" element={<AdminPortalReports />} />
-        <Route path="sme" element={<AdminPortalSME />} />
-        <Route path="intelligence" element={<AdminPortalIntelligence />} />
-        <Route path="analytics" element={<AdminPortalAnalytics />} />
-        <Route path="payroll" element={<AdminPortalPayroll />} />
-        <Route path="team" element={<AdminPortalTeam />} />
-        <Route path="*" element={<Navigate to="overview" replace />} />
+      <Route path="/staff" element={<RequireRole staff><StaffPortal /></RequireRole>}>
+        <Route index element={<StaffOverview />} />
+        <Route path="applications" element={<StaffApplications />} />
+        <Route path="applications/:id" element={<ApplicationReview />} />
+        <Route path="transactions" element={<Allow permission={['disbursements.record', 'disbursements.confirm', 'repayments.record', 'repayments.confirm']}><StaffTransactions /></Allow>} />
+        <Route path="customers" element={<Allow permission="customers.view"><StaffCustomers /></Allow>} />
+        <Route path="customers/:id" element={<Allow permission="customers.view"><StaffCustomerDetail /></Allow>} />
+        <Route path="members" element={<Allow permission="members.view"><StaffMembers /></Allow>} />
+        <Route path="businesses" element={<Allow permission="businesses.view"><StaffBusinessList /></Allow>} />
+        <Route path="businesses/new" element={<Allow permission="businesses.manage"><NewBusinessPage /></Allow>} />
+        <Route path="businesses/:id" element={<Allow permission="businesses.view"><BusinessDetailPage /></Allow>} />
+        <Route path="messages" element={<Allow permission="customers.view"><MessagesPage /></Allow>} />
+        <Route path="messages/:id" element={<Allow permission="customers.view"><MessagesPage /></Allow>} />
+        <Route path="reports" element={<Allow permission={['reports.view', 'reports.sme']}><StaffReports /></Allow>} />
+        <Route path="payroll" element={<Allow permission="payroll.manage"><StaffPayroll /></Allow>} />
+        <Route path="assistant" element={<AssistantPage />} />
+        <Route path="products" element={<Allow permission="products.manage"><StaffProducts /></Allow>} />
+        <Route path="team" element={<Allow permission={['staff.manage', 'permissions.manage']}><StaffAdmin /></Allow>} />
+        <Route path="knowledge" element={<Allow permission="knowledge.manage"><StaffKnowledge /></Allow>} />
+        <Route path="audit" element={<Allow permission="audit.view"><StaffAudit /></Allow>} />
+        <Route path="settings/institution" element={<Allow permission="settings.manage"><StaffSettings /></Allow>} />
+        <Route path="settings" element={<SettingsPage />} />
+        <Route path="notifications" element={<NotificationsPage />} />
+        <Route path="*" element={<Navigate to="/staff" replace />} />
       </Route>
 
-      {/* Root — marketing landing for guests, redirect for authenticated users */}
-      <Route path="/" element={
-        session
-          ? <Navigate to={session.role !== 'customer' ? '/staff' : '/client'} replace />
-          : <MarketingPage onEnterApp={() => window.location.href = '/login'} />
-      } />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
 
-class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: Error | null }> {
-  constructor(props: { children: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('Unhandled app error caught by boundary:', error, errorInfo);
-  }
-
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
   render() {
-    if (this.state.hasError) {
-      return (
-        <div className="min-h-screen flex items-center justify-center p-6 bg-gray-50 dark:bg-[#121212] text-gray-900 dark:text-white">
-          <div className="max-w-md w-full p-8 bg-white dark:bg-[#1e1e1e] rounded-3xl shadow-xl border border-gray-200 dark:border-white/10 text-center space-y-4">
-            <div className="w-12 h-12 bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400 rounded-2xl flex items-center justify-center mx-auto text-xl font-black">
-              !
-            </div>
-            <h2 className="text-xl font-bold">Something went wrong</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              An unexpected error occurred while loading this page.
-            </p>
-            {this.state.error && (
-              <div className="p-3 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl text-left text-xs font-mono text-red-700 dark:text-red-300 overflow-x-auto max-h-32">
-                {this.state.error.message}
-              </div>
-            )}
-            <button
-              onClick={() => {
-                this.setState({ hasError: false, error: null });
-                window.location.href = '/';
-              }}
-              className="w-full py-3 px-4 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl shadow-lg transition-colors text-sm"
-            >
-              Reload Application
-            </button>
-          </div>
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="flex min-h-dvh items-center justify-center p-6 text-center">
+        <div>
+          <h1 className="text-lg font-semibold">Something went wrong</h1>
+          <p className="mt-1 text-sm text-ink-muted">Please reload the page. If it keeps happening, contact support.</p>
+          <button type="button" className="mt-4 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white" onClick={() => window.location.reload()}>Reload</button>
         </div>
-      );
-    }
-    return this.props.children;
+      </div>
+    );
   }
 }
 
@@ -329,7 +185,9 @@ export default function App() {
     <ErrorBoundary>
       <BrowserRouter>
         <AuthProvider>
-          <AppRoutes />
+          <ToastProvider>
+            <AppRoutes />
+          </ToastProvider>
         </AuthProvider>
       </BrowserRouter>
     </ErrorBoundary>

@@ -1,172 +1,85 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import {
-  login as authLogin,
-  logout as authLogout,
-  register as authRegister,
-  getCurrentSession,
-  seedStaffAccount,
-  type Session,
-  type RegisterPayload,
-} from './authService';
-import { seedIfNeeded } from '../lib/store';
-import { themeStore } from '../lib/store';
-import { recordAuditEvent } from '../lib/auditTrail';
-import { PSA_UNAUTHORIZED_EVENT } from '../lib/apiClient';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { api, tokenStore, UNAUTHORIZED_EVENT } from '../api/client';
+import type { Profile, SessionResponse } from '../api/types';
 
-interface AuthContextValue {
-  session: Session | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  theme: 'light' | 'dark';
-  toggleTheme: () => void;
-  login: (email: string, password: string, remember: boolean) => Promise<{ success: boolean; session?: Session; error?: string }>;
-  logout: () => void;
-  register: (payload: RegisterPayload) => Promise<{ success: boolean; error?: string }>;
+interface AuthState {
+  profile: Profile | null;
+  loading: boolean;
+  /** Stores a session returned by login, registration, activation or passkey sign-in. */
+  startSession: (session: SessionResponse, remember?: boolean) => void;
+  /** Replaces the token after a password change (the server issues a new one). */
+  replaceToken: (token: string) => void;
+  refreshProfile: () => Promise<void>;
+  logout: () => Promise<void>;
+  can: (permission: string) => boolean;
+  isStaff: boolean;
 }
 
-const AuthContext = createContext<AuthContextValue | null>(null);
+const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Auto-logout when any API call returns 401 (expired / invalid token)
-  useEffect(() => {
-    const handleUnauthorized = () => {
-      authLogout();
-      setSession(null);
-    };
-    window.addEventListener(PSA_UNAUTHORIZED_EVENT, handleUnauthorized);
-    return () => window.removeEventListener(PSA_UNAUTHORIZED_EVENT, handleUnauthorized);
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-
-    (async () => {
-      seedIfNeeded();
-      await seedStaffAccount();
-
-      if (!active) return;
-      const existing = getCurrentSession();
-      setSession(existing);
-
-      setTheme('light');
-      themeStore.init();
-
-      setIsLoading(false);
-    })();
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!session) return;
-
-    const expiresAt = Date.parse(session.expiresAt);
-    if (Number.isNaN(expiresAt) || expiresAt <= Date.now()) {
-      authLogout();
-      setSession(null);
+  const refreshProfile = useCallback(async () => {
+    if (!tokenStore.get()) {
+      setProfile(null);
       return;
     }
-
-    const timeout = window.setTimeout(() => {
-      authLogout();
-      setSession(null);
-    }, expiresAt - Date.now());
-
-    return () => window.clearTimeout(timeout);
-  }, [session?.expiresAt]);
-  const login = useCallback(async (email: string, password: string, remember: boolean) => {
-    const result = await authLogin(email, password, remember);
-    if (result.success && result.session) {
-      setSession(result.session);
-      recordAuditEvent({
-        actorId: result.session.userId,
-        actorName: result.session.fullName,
-        actorRole: result.session.role,
-        action: 'auth.login',
-        entityType: 'session',
-        entityId: result.session.userId,
-        outcome: 'success',
-        summary: `${result.session.fullName} signed in to the ${result.session.role} portal.`,
-        metadata: { remember },
-      });
-    } else {
-      recordAuditEvent({
-        actorId: 'anonymous',
-        actorName: email || 'Unknown user',
-        actorRole: 'system',
-        action: 'auth.login_failed',
-        entityType: 'session',
-        outcome: 'failure',
-        summary: `Failed login attempt for ${email || 'unknown email'}.`,
-        metadata: { email },
-      });
+    try {
+      setProfile(await api<Profile>('/api/auth/me'));
+    } catch {
+      tokenStore.clear();
+      setProfile(null);
     }
-    return { success: result.success, session: result.session, error: result.error };
   }, []);
 
-  const logout = useCallback(() => {
-    if (session) {
-      recordAuditEvent({
-        actorId: session.userId,
-        actorName: session.fullName,
-        actorRole: session.role,
-        action: 'auth.logout',
-        entityType: 'session',
-        entityId: session.userId,
-        outcome: 'success',
-        summary: `${session.fullName} signed out.`,
-      });
+  useEffect(() => {
+    refreshProfile().finally(() => setLoading(false));
+  }, [refreshProfile]);
+
+  useEffect(() => {
+    const onUnauthorized = () => {
+      tokenStore.clear();
+      setProfile(null);
+    };
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+  }, []);
+
+  const startSession = useCallback((session: SessionResponse, remember = false) => {
+    tokenStore.set(session.token, remember);
+    setProfile(session.profile);
+  }, []);
+
+  const replaceToken = useCallback((token: string) => tokenStore.replace(token), []);
+
+  const logout = useCallback(async () => {
+    try {
+      await api('/api/auth/logout', { method: 'POST' });
+    } catch {
+      /* the session may already be gone */
     }
-    authLogout();
-    setSession(null);
-  }, [session]);
-
-  const register = useCallback(async (payload: RegisterPayload) => {
-    const result = await authRegister(payload);
-    recordAuditEvent({
-      actorId: 'self-registration',
-      actorName: payload.fullName || payload.email,
-      actorRole: 'client',
-      action: result.success ? 'auth.register' : 'auth.register_failed',
-      entityType: 'user',
-      outcome: result.success ? 'success' : 'failure',
-      summary: result.success
-        ? `New ${payload.customerType} account registered for ${payload.fullName}.`
-        : `Registration failed for ${payload.email}.`,
-      metadata: { email: payload.email, customerType: payload.customerType },
-    });
-    return result;
+    tokenStore.clear();
+    setProfile(null);
   }, []);
 
-  const toggleTheme = useCallback(() => {
-    setTheme('light');
-    themeStore.set('light');
-  }, []);
+  const value = useMemo<AuthState>(() => ({
+    profile,
+    loading,
+    startSession,
+    replaceToken,
+    refreshProfile,
+    logout,
+    can: (permission: string) => Boolean(profile?.permissions.includes(permission)),
+    isStaff: Boolean(profile && profile.role !== 'customer'),
+  }), [profile, loading, startSession, replaceToken, refreshProfile, logout]);
 
-  return (
-    <AuthContext.Provider value={{
-      session,
-      isAuthenticated: !!session,
-      isLoading,
-      theme,
-      toggleTheme,
-      login,
-      logout,
-      register,
-    }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export function useAuth(): AuthContextValue {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used inside <AuthProvider>');
-  return ctx;
+export function useAuth(): AuthState {
+  const context = useContext(AuthContext);
+  if (!context) throw new Error('useAuth must be used inside AuthProvider');
+  return context;
 }

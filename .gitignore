@@ -7,3 +7,8 @@ coverage/
 .env*
 !.env.example
 server/data/*.json
+
+# Local development state (database cluster, documents, backups, tool copies)
+.local/
+server/data/
+.claude/

@@ -1,37 +1,47 @@
-name: PINACO Smart Advisor CI Pipeline
+name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main ]
 
 jobs:
-  audit-build-test:
-    name: Build, Lint & Test Suite
+  build-and-test:
     runs-on: ubuntu-latest
-
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pinaco_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: pinaco_test
+      PGDATABASE_TEST: pinaco_test
     steps:
-      - name: Checkout Source Code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js Environment
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
-
-      - name: Install Dependencies
-        run: npm ci
-
-      - name: TypeScript Static Analysis
-        run: npx tsc --noEmit
-
-      - name: Production Bundle Build
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Type check
+        run: npm run lint
+      - name: Build web app
         run: npm run build
-
-      - name: Execute Server Test Suite
+      - name: Migrations apply to a clean database
+        run: npm run migrate
+      - name: Server tests (drop and re-migrate the test database per file)
         run: npm test
-
-      - name: Database Migration Check
-        run: npm run migrate:status
+      - name: Dependency audit (production, high severity)
+        run: npm audit --omit=dev --audit-level=high

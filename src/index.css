@@ -1,60 +1,81 @@
-@import url('https://fonts.googleapis.com/css2?family=Public+Sans:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
-/* Disable dark variant so dark:* utility classes NEVER activate on any device or OS setting */
-@custom-variant dark (&:where(.dark-disabled-never-match));
+/* The product uses a single light theme by design. */
+@custom-variant dark (&:where(.never-dark));
 
+/*
+ * Design tokens. Pinnacle orange is the brand accent; neutrals carry most of the UI
+ * so that status colours (success / warning / danger / info) stay meaningful.
+ * All text/background pairs below meet WCAG AA contrast.
+ */
 @theme {
-  /* Brand colours */
-  --color-primary: #964900;
-  --color-primary-container: #f58220;
-  --color-secondary: #5e5e5e;
-  --color-tertiary: #00abf3;
-  --color-on-surface: #1d1b1a;
-  --color-surface-container: #efe8df;
-  --color-surface-container-low: #f5ede4;
-  --color-surface-container-high: #e9e2d9;
-  --color-surface-container-highest: #dfd8cf;
-  --color-outline-variant: #d2c8be;
-  --color-error: #ba1a1a;
-  --color-error-container: #ffdad6;
-  --font-sans: "Public Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Public Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --color-brand-50: #fff6ed;
+  --color-brand-100: #ffe9d4;
+  --color-brand-200: #fdcfa6;
+  --color-brand-500: #f58220;
+  --color-brand-600: #d96b0c;
+  --color-brand-700: #a85208;   /* text on white: 5.3:1 */
+  --color-brand-800: #7e3e07;
+
+  --color-ink: #1c1917;          /* primary text */
+  --color-ink-muted: #57534e;    /* secondary text: 7.1:1 on white */
+  --color-ink-subtle: #78716c;   /* tertiary text: 4.6:1 on white */
+  --color-line: #e7e5e4;
+  --color-line-strong: #d6d3d1;
+  --color-canvas: #fafaf9;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f5f5f4;
+
+  --color-success-50: #ecfdf3;
+  --color-success-700: #067647;
+  --color-warning-50: #fffaeb;
+  --color-warning-700: #93370d;
+  --color-danger-50: #fef3f2;
+  --color-danger-600: #d92d20;
+  --color-danger-700: #b42318;
+  --color-info-50: #eff8ff;
+  --color-info-700: #175cd3;
+
+  --radius-card: 0.75rem;
+  --shadow-card: 0 1px 2px rgb(28 25 23 / 0.06), 0 1px 3px rgb(28 25 23 / 0.04);
 }
 
-:root, html {
-  color-scheme: light only !important;
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
-  min-height: 100vh;
-  background-color: #fcf8f2 !important;
-  color: #1d1b1a;
+  min-height: 100dvh;
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
 }
 
-/* ── Smooth transitions ─────────────────────────────────────────────────── */
-*, *::before, *::after {
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.15s ease;
+/* Visible keyboard focus everywhere; never removed. */
+:focus-visible {
+  outline: 2px solid var(--color-brand-600);
+  outline-offset: 2px;
 }
 
-/* ── Custom scrollbar ─────────────────────────────────────────────────── */
-.no-scrollbar::-webkit-scrollbar { display: none; }
-.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-
-/* Thin scrollbar for main content */
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #d2c8be; border-radius: 9999px; }
-
-/* ── Animations ───────────────────────────────────────────────────────── */
-@keyframes fade-in-up {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
+/* Inputs at 16px prevent iOS Safari from zooming the page on focus. */
+input, select, textarea {
+  font-size: 16px;
 }
-.animate-in { animation: fade-in-up 0.25s ease both; }
+@media (min-width: 640px) {
+  input, select, textarea { font-size: 14px; }
+}
 
-@keyframes spin { to { transform: rotate(360deg); } }
-.animate-spin { animation: spin 0.8s linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
 
-/* ── Focus ring ───────────────────────────────────────────────────────── */
-:focus-visible { outline: 2px solid #f58220; outline-offset: 2px; border-radius: 8px; }
+.tabular-nums { font-variant-numeric: tabular-nums; }
