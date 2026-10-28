@@ -1,0 +1,43 @@
+# Single-server deployment: API + web app + PostgreSQL.
+# Secrets come from a .env file next to this file (never commit it). Required:
+#   POSTGRES_PASSWORD, AUTH_SECRET (32+ random characters), APP_URL, WEBAUTHN_RP_ID, WEBAUTHN_ORIGINS
+# Optional: DOCUMENT_ENCRYPTION_KEY (32 bytes, base64), SENDGRID_*, AFRICASTALKING_*, ASSISTANT_OLLAMA_*
+services:
+  app:
+    build: .
+    restart: always
+    ports:
+      - "4000:4000"
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgres://pinnacle:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/pinnacle
+      MIGRATE_ON_START: "true"
+    volumes:
+      # Uploaded documents and backups survive container rebuilds and redeployments.
+      - app_storage:/app/storage
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: pinnacle
+      POSTGRES_USER: pinnacle
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    # Not published to the host; only the app container can reach the database.
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pinnacle -d pinnacle"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+volumes:
+  postgres_data:
+  app_storage:

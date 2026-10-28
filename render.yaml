@@ -1,0 +1,47 @@
+services:
+  - type: web
+    name: pinnacle-platform
+    runtime: docker
+    plan: free
+    branch: main
+    healthCheckPath: /api/health
+    dockerContext: .
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "4000"
+      - key: SERVE_FRONTEND
+        value: "true"
+      - key: MIGRATE_ON_START
+        value: "true"
+      - key: APP_URL
+        value: https://your-app.onrender.com
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: TRUST_PROXY
+        value: "true"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pinnacle-db
+          property: connectionString
+      - key: WEBAUTHN_RP_ID
+        value: your-app.onrender.com
+      - key: WEBAUTHN_ORIGINS
+        value: https://your-app.onrender.com
+      - key: DOCUMENT_STORAGE_DIR
+        value: /app/storage/documents
+      - key: BACKUP_DIR
+        value: /app/storage/backups
+      - key: DOCUMENT_STORAGE_DRIVER
+        value: local
+      - key: BACKGROUND_JOBS
+        value: "on"
+
+# Managed Postgres database for the app.
+databases:
+  - name: pinnacle-db
+    databaseName: pinnacle
+    user: pinnacle
+    plan: free
