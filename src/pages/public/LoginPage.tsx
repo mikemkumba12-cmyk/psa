@@ -2,15 +2,16 @@ import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Fingerprint } from 'lucide-react';
 import { browserSupportsWebAuthn, startAuthentication } from '@simplewebauthn/browser';
-import { api, ApiError } from '../../api/client';
+import { api, ApiError, getApiBaseUrl } from '../../api/client';
 import type { SessionResponse } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
-import { Button } from '../../ui/Button';
+import { Button, ButtonLink } from '../../ui/Button';
+import { Alert } from '../../ui/Feedback';
 import { Checkbox, FormErrorSummary, PasswordInput, TextInput } from '../../ui/Form';
 import { AuthShell } from './AuthShell';
 
 export function LoginPage({ staff }: { staff?: boolean }) {
-  const { startSession } = useAuth();
+  const { startSession, profile, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [email, setEmail] = useState('');
@@ -19,10 +20,19 @@ export function LoginPage({ staff }: { staff?: boolean }) {
   const [pending, setPending] = useState<'password' | 'passkey' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [passkeySupported, setPasskeySupported] = useState(false);
+  const [customerOnStaffPage, setCustomerOnStaffPage] = useState(false);
 
   useEffect(() => { setPasskeySupported(browserSupportsWebAuthn()); }, []);
 
-  const finish = (session: SessionResponse) => {
+  const finish = async (session: SessionResponse) => {
+    // The staff page signs staff in only. A customer account gets a clear message instead of
+    // being silently sent to the customer portal, and the session just created is ended.
+    if (staff && session.profile.role === 'customer') {
+      await fetch(`${getApiBaseUrl()}/api/auth/logout`, { method: 'POST', headers: { Authorization: `Bearer ${session.token}` } }).catch(() => undefined);
+      setPassword('');
+      setCustomerOnStaffPage(true);
+      return;
+    }
     startSession(session, remember);
     const from = (location.state as { from?: string } | null)?.from;
     const home = session.profile.role === 'customer' ? '/client' : '/staff';
@@ -33,8 +43,9 @@ export function LoginPage({ staff }: { staff?: boolean }) {
     event.preventDefault();
     setPending('password');
     setError(null);
+    setCustomerOnStaffPage(false);
     try {
-      finish(await api<SessionResponse>('/api/auth/login', { body: { email, password } }));
+      await finish(await api<SessionResponse>('/api/auth/login', { body: { email, password } }));
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Sign-in failed.');
     } finally {
@@ -45,10 +56,11 @@ export function LoginPage({ staff }: { staff?: boolean }) {
   const signInWithPasskey = async () => {
     setPending('passkey');
     setError(null);
+    setCustomerOnStaffPage(false);
     try {
       const { challengeId, options } = await api<{ challengeId: string; options: any }>('/api/auth/passkeys/login/options', { method: 'POST' });
       const response = await startAuthentication({ optionsJSON: options });
-      finish(await api<SessionResponse>('/api/auth/passkeys/login/verify', { body: { challengeId, response } }));
+      await finish(await api<SessionResponse>('/api/auth/passkeys/login/verify', { body: { challengeId, response } }));
     } catch (caught: any) {
       if (caught?.name === 'NotAllowedError') setError('Passkey sign-in was cancelled.');
       else setError(caught instanceof ApiError ? caught.message : 'Passkey sign-in did not work on this device.');
@@ -65,7 +77,24 @@ export function LoginPage({ staff }: { staff?: boolean }) {
         ? <Link className="font-semibold text-brand-700 hover:underline" to="/login">Customer sign in</Link>
         : <>New here? <Link className="font-semibold text-brand-700 hover:underline" to="/register">Create an account</Link> · <Link className="font-semibold text-brand-700 hover:underline" to="/activate">Activate an existing client account</Link></>}
     >
+      {staff && profile?.role === 'customer' ? (
+        <div className="space-y-4">
+          <Alert tone="info" title="You’re signed in with a customer account">
+            This page is for Pinnacle staff. To use a staff account, sign out first.
+          </Alert>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <ButtonLink to="/client" variant="secondary" className="sm:flex-1">Go to my customer portal</ButtonLink>
+            <Button className="sm:flex-1" onClick={() => { void logout(); }}>Sign out</Button>
+          </div>
+        </div>
+      ) : (<>
       <form onSubmit={submit} className="space-y-4" noValidate>
+        {customerOnStaffPage && (
+          <Alert tone="warning" title="This is a customer account">
+            Staff accounts are created by an administrator. To sign in as a customer, use the{' '}
+            <Link className="font-semibold underline" to="/login">customer sign-in page</Link>.
+          </Alert>
+        )}
         <FormErrorSummary message={error ?? undefined} />
         <TextInput label="Email" type="email" autoComplete="username webauthn" required value={email} onChange={event => setEmail(event.target.value)} />
         <PasswordInput label="Password" autoComplete="current-password" required value={password} onChange={event => setPassword(event.target.value)} />
@@ -84,6 +113,7 @@ export function LoginPage({ staff }: { staff?: boolean }) {
           <p className="mt-2 text-center text-xs text-ink-subtle">Uses your device’s fingerprint, face or PIN. Set it up in Settings after signing in.</p>
         </>
       )}
+      </>)}
     </AuthShell>
   );
 }

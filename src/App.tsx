@@ -108,7 +108,8 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={home ? <Navigate to={home} replace /> : <LandingPage />} />
       <Route path="/login" element={home ? <Navigate to={home} replace /> : <LoginPage />} />
-      <Route path="/staff/login" element={home ? <Navigate to={home} replace /> : <LoginPage staff />} />
+      {/* A signed-in customer sees an explanation on the staff page instead of a silent redirect. */}
+      <Route path="/staff/login" element={profile && profile.role !== 'customer' ? <Navigate to="/staff" replace /> : <LoginPage staff />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/activate" element={home ? <Navigate to={home} replace /> : <ActivatePage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
