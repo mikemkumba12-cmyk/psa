@@ -142,6 +142,79 @@ export function StaffAudit() {
 
 // ── Institution settings ─────────────────────────────────────────────────────
 
+interface GovernanceChange {
+  id: string; type: 'access' | 'setting' | 'product' | 'staff_create'; entityId: string; payload: Record<string, any>; previousValue: any;
+  status: 'pending' | 'approved' | 'rejected'; requestedBy: string; requestedById: string; reviewedBy: string | null;
+  reviewedAt: string | null; reviewNote: string | null; createdAt: string;
+}
+
+export function StaffGovernance() {
+  const { profile, can } = useAuth();
+  const queue = useResource<GovernanceChange[]>('/api/governance/changes');
+  const toast = useToast();
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+  const decide = async (change: GovernanceChange, decision: 'approve' | 'reject') => {
+    const note = notes[change.id]?.trim() ?? '';
+    if (note.length < 5) { toast('Add a decision note of at least 5 characters.', 'error'); return; }
+    setBusy(change.id);
+    try {
+      await api(`/api/governance/changes/${change.id}/decision`, { body: { decision, note } });
+      toast(decision === 'approve' ? 'Change approved and applied.' : 'Change rejected.');
+      void queue.reload();
+    } catch (caught) {
+      toast(caught instanceof ApiError ? caught.message : 'Could not record the decision.', 'error');
+    } finally { setBusy(null); }
+  };
+  if (queue.error) return <ErrorState error={queue.error} onRetry={queue.reload} />;
+  if (!queue.data) return queue.loading ? <LoadingBlock /> : null;
+  return (
+    <>
+      <PageHeader title="Governance approvals" description="Sensitive policy and staff-access changes take effect only after a different authorized person approves them. Decisions require a note and are recorded in the audit log." />
+      {queue.data.length === 0 ? <Card><p className="text-sm text-ink-muted">No governance changes have been submitted.</p></Card> : (
+        <div className="space-y-4">
+          {queue.data.map(change => {
+            const canReview = change.type === 'access' ? can('permissions.manage') : change.type === 'setting' ? can('settings.manage') : change.type === 'product' ? can('products.manage') : can('staff.manage');
+            const selfTarget = change.type === 'access' && change.entityId === profile?.id;
+            const mayDecide = change.status === 'pending' && canReview && change.requestedById !== profile?.id && !selfTarget;
+            const title = change.type === 'access'
+              ? `Staff access: ${change.entityId}`
+              : change.type === 'setting'
+                ? `Institution policy: ${change.entityId}`
+                : change.type === 'product'
+                  ? `Loan product: ${change.payload.product?.name ?? change.entityId}`
+                  : `New staff account: ${change.payload.fullName}`;
+            return (
+              <Card key={change.id} title={title} description={`Requested by ${change.requestedBy} · ${dateTime(change.createdAt)}`}>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div><p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-subtle">Current values</p><pre className="max-h-56 overflow-auto rounded-lg bg-surface-muted p-3 text-xs">{JSON.stringify(change.previousValue, null, 2)}</pre></div>
+                  <div><p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-subtle">Proposed values</p><pre className="max-h-56 overflow-auto rounded-lg bg-surface-muted p-3 text-xs">{JSON.stringify(change.payload.value ?? change.payload, null, 2)}</pre></div>
+                </div>
+                {change.status === 'pending' && mayDecide ? (
+                  <div className="mt-4 space-y-3 border-t border-line pt-4">
+                    <TextInput label="Decision note (required)" value={notes[change.id] ?? ''} onChange={event => setNotes({ ...notes, [change.id]: event.target.value })} />
+                    <div className="flex justify-end gap-2">
+                      <Button variant="danger" loading={busy === change.id} disabled={Boolean(busy)} onClick={() => void decide(change, 'reject')}>Reject</Button>
+                      <Button loading={busy === change.id} disabled={Boolean(busy)} onClick={() => void decide(change, 'approve')}>Approve</Button>
+                    </div>
+                  </div>
+                ) : change.status === 'pending' ? (
+                  <Alert tone="info">Pending independent review. The requester cannot approve their own change. A different authorized person must review it.</Alert>
+                ) : (
+                  <div className="mt-4 border-t border-line pt-3 text-sm text-ink-muted">
+                    <p><strong>{titleCase(change.status)}</strong> by {change.reviewedBy} · {change.reviewedAt ? dateTime(change.reviewedAt) : ''}</p>
+                    {change.reviewNote && <p className="mt-1">Reason: {change.reviewNote}</p>}
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+}
+
 interface SettingRow { key: string; value: Record<string, any>; description: string | null; updatedAt: string }
 
 export function StaffSettings() {
@@ -152,7 +225,7 @@ export function StaffSettings() {
   const setting = data.find(row => row.key === tab);
   return (
     <>
-      <PageHeader title="Institution settings" description="Policies the system enforces. Values marked as placeholders must be confirmed by Pinnacle before go-live." />
+      <PageHeader title="Institution settings" description="Propose policy changes. A different authorized staff member must approve each change before it takes effect." />
       <Tabs label="Settings" value={tab} onChange={setTab} tabs={[
         { id: 'membership_policy', label: 'Membership' }, { id: 'assessment_thresholds', label: 'Assessment thresholds' }, { id: 'workflow', label: 'Workflow' }, { id: 'branding', label: 'Branding & contact' },
       ]} />
@@ -192,6 +265,7 @@ const SETTING_FIELDS: Record<string, Array<{ key: string; label: string; type: '
 
 function SettingEditor({ setting, onSaved }: { setting: SettingRow; onSaved: () => void }) {
   const toast = useToast();
+  const history = useResource<any[]>(`/api/governance/policies/${setting.key}/history`);
   const [value, setValue] = useState<Record<string, any>>(setting.value);
   const [error, setError] = useState<ApiError | null>(null);
   const [pending, setPending] = useState(false);
@@ -201,8 +275,8 @@ function SettingEditor({ setting, onSaved }: { setting: SettingRow; onSaved: () 
     setPending(true);
     setError(null);
     try {
-      await api(`/api/settings/${setting.key}`, { method: 'PUT', body: value });
-      toast('Settings saved and audited.');
+      const result = await api<{ status?: string }>(`/api/settings/${setting.key}`, { method: 'PUT', body: value });
+      toast(result.status === 'pending_approval' ? 'Policy change submitted for independent approval.' : 'Policy is unchanged.');
       onSaved();
     } catch (caught) {
       setError(caught instanceof ApiError ? caught : new ApiError(0, 'Could not save.'));
@@ -228,6 +302,19 @@ function SettingEditor({ setting, onSaved }: { setting: SettingRow; onSaved: () 
         </div>
         <p className="text-xs text-ink-subtle">Last updated {dateTime(setting.updatedAt)}</p>
         <div className="flex justify-end"><Button onClick={save} loading={pending}>Save</Button></div>
+        {history.data && history.data.length > 0 && (
+          <section className="border-t border-line pt-4">
+            <h3 className="text-sm font-semibold">Approved policy versions</h3>
+            <ol className="mt-2 space-y-2">
+              {history.data.slice(0, 8).map(version => (
+                <li key={version.version} className="flex flex-wrap justify-between gap-x-4 gap-y-1 rounded-lg bg-surface-muted p-3 text-xs">
+                  <span><strong>Version {version.version}</strong> · effective {dateTime(version.effectiveAt)}</span>
+                  <span>Proposed by {version.requestedBy ?? 'Baseline'} · approved by {version.approvedBy ?? 'Not recorded for baseline'}</span>
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
       </div>
     </Card>
   );

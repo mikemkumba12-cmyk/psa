@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { many, one, transaction, type Queryable, pool } from '../../db/pool';
 import { audit } from '../../lib/audit';
-import { notFound, parse, route } from '../../lib/http';
+import { conflict, notFound, parse, route } from '../../lib/http';
+import { newId } from '../../lib/ids';
 import { requirePermission } from '../../auth/permissions';
 
 export interface MembershipPolicy {
@@ -27,7 +28,7 @@ export interface WorkflowSettings {
   offerValidityDays: number;
 }
 
-const schemas = {
+export const settingSchemas = {
   branding: z.object({
     institutionName: z.string().trim().min(2).max(200),
     shortName: z.string().trim().min(2).max(60),
@@ -64,7 +65,7 @@ const schemas = {
   }),
 } as const;
 
-type SettingKey = keyof typeof schemas;
+type SettingKey = keyof typeof settingSchemas;
 
 export async function getSetting<T>(key: SettingKey, client: Queryable = pool): Promise<T> {
   const row = await one<{ value: T }>('SELECT value FROM app_settings WHERE key = $1', [key], client);
@@ -100,13 +101,24 @@ settingsRouter.get('/settings/policies', route(async (req, res) => {
 
 settingsRouter.put('/settings/:key', requirePermission('settings.manage'), route(async (req, res) => {
   const key = req.params.key as SettingKey;
-  const schema = schemas[key];
+  const schema = settingSchemas[key];
   if (!schema) throw notFound('Unknown setting.');
   const value = parse(schema as z.ZodType<Record<string, unknown>>, req.body);
   const before = await getSetting<Record<string, unknown>>(key);
+  if (JSON.stringify(before) === JSON.stringify(value)) return res.json({ key, value, unchanged: true });
+  const pending = await one<{ id: string }>(
+    `SELECT id FROM governance_change_requests WHERE change_type = 'setting' AND entity_id = $1 AND status = 'pending'`, [key],
+  );
+  if (pending) throw conflict('There is already a pending governance request for this setting.');
+  const requestId = newId('gov');
   await transaction(async client => {
-    await client.query('UPDATE app_settings SET value = $2, updated_by = $3, updated_at = now() WHERE key = $1', [key, value, req.auth!.userId]);
-    await audit(req, { action: 'settings.update', entityType: 'setting', entityId: key, summary: `Updated ${key}.`, metadata: { before, after: value } }, client);
+    await client.query(
+      `INSERT INTO governance_change_requests (id, change_type, entity_id, requested_by, payload, previous_value)
+       VALUES ($1, 'setting', $2, $3, $4, $5)`,
+      [requestId, key, req.auth!.userId, { key, value }, before],
+    );
+    await client.query(`INSERT INTO governance_change_events (request_id, actor_id, event_type) VALUES ($1, $2, 'submitted')`, [requestId, req.auth!.userId]);
+    await audit(req, { action: 'governance.change_submitted', entityType: 'setting', entityId: key, summary: `Submitted a proposed update to ${key}; it is pending independent approval.`, metadata: { requestId, before, after: value } }, client);
   });
-  res.json({ key, value });
+  res.status(202).json({ key, value, status: 'pending_approval', requestId });
 }));

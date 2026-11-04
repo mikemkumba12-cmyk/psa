@@ -106,20 +106,22 @@ staffRouter.post('/admin/staff', requirePermission('staff.manage'), route(async 
 
   const id = newId('usr');
   const password = temporaryPassword();
+  const requestId = newId('gov');
+  const passwordHash = await hashSecret(password);
   await transaction(async client => {
     await client.query(
-      `INSERT INTO users (id, email, password_hash, name, role, phone, staff_title, must_change_password)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)`,
-      [id, input.email, await hashSecret(password), input.fullName, input.role, input.phone ?? null, input.staffTitle ?? null],
+      `INSERT INTO governance_change_requests (id, change_type, entity_id, requested_by, payload, previous_value)
+       VALUES ($1, 'staff_create', $2, $3, $4, 'null'::jsonb)`,
+      [requestId, id, req.auth!.userId, { id, ...input, passwordHash }],
     );
+    await client.query(`INSERT INTO governance_change_events (request_id, actor_id, event_type) VALUES ($1, $2, 'submitted')`, [requestId, req.auth!.userId]);
     await audit(req, {
-      action: 'staff.create', entityType: 'user', entityId: id,
-      summary: `Created ${input.role} account for ${input.fullName}.`, metadata: { role: input.role, email: input.email },
+      action: 'governance.change_submitted', entityType: 'user', entityId: id,
+      summary: `Submitted a request to create a ${input.role} account for ${input.fullName}.`, metadata: { requestId, role: input.role, email: input.email },
     }, client);
   });
-  const created = await one(`${STAFF_SELECT} WHERE u.id = $1`, [id]);
-  // The temporary password is shown once to the administrator and must be changed at first sign-in.
-  res.status(201).json({ staff: presentStaff(created), temporaryPassword: password });
+  // Shown only to the requester; account creation still requires a different administrator's approval.
+  res.status(202).json({ status: 'pending_approval', requestId, staff: { id, ...input }, temporaryPassword: password });
 }));
 
 const updateSchema = z.object({
@@ -137,11 +139,7 @@ staffRouter.patch('/admin/staff/:id', requirePermission('staff.manage'), route(a
   const self = target.id === req.auth!.userId;
 
   if (input.role && input.role !== target.role) {
-    assertPermission(req, 'permissions.manage');
-    if (self) throw forbidden('You cannot change your own role.');
-    if ((input.role === 'admin' || target.role === 'admin') && req.auth!.role !== 'admin') {
-      throw forbidden('Only administrators can grant or remove the administrator role.');
-    }
+    throw badRequest('Role changes must be submitted through the independent access-approval workflow.');
   }
   if (input.isActive === false && self) throw forbidden('You cannot deactivate your own account.');
   if (target.role === 'admin' && req.auth!.role !== 'admin') throw forbidden('Only administrators can change administrator accounts.');
@@ -201,6 +199,7 @@ const accessSchema = z.object({
   denies: z.array(z.enum(PERMISSIONS)).max(PERMISSIONS.length),
   productIds: z.array(z.string().max(100)).max(200),
   approvalLimit: z.number().nonnegative().max(1e13).nullable(),
+  role: z.enum(STAFF_ROLES).optional(),
 });
 
 staffRouter.put('/admin/staff/:id/access', requirePermission('permissions.manage'), route(async (req, res) => {
@@ -208,49 +207,46 @@ staffRouter.put('/admin/staff/:id/access', requirePermission('permissions.manage
   const target = await one(`${STAFF_SELECT} WHERE u.id = $1 AND u.role <> 'customer'`, [req.params.id]);
   if (!target) throw notFound('Staff member not found.');
   if (target.id === req.auth!.userId) throw forbidden('You cannot change your own access. Ask another administrator.');
-  if (target.role === 'admin' && req.auth!.role !== 'admin') throw forbidden('Only administrators can change administrator access.');
+  const newRole = input.role ?? target.role;
+  if ((target.role === 'admin' || newRole === 'admin') && req.auth!.role !== 'admin') throw forbidden('Only administrators can change administrator access.');
   const overlap = input.grants.filter(permission => input.denies.includes(permission));
   if (overlap.length) throw badRequest(`A permission cannot be both granted and denied: ${overlap.join(', ')}.`);
   // Nobody may hand out a permission they do not hold themselves.
   const escalation = input.grants.filter(permission => !req.auth!.permissions.has(permission as Permission));
   if (escalation.length) throw forbidden(`You cannot grant permissions you do not hold: ${escalation.join(', ')}.`);
+  if (newRole !== 'admin') {
+    const defaults = await many<{ permission_id: Permission }>('SELECT permission_id FROM role_permissions WHERE role_id = $1', [newRole]);
+    const proposedPermissions = new Set([...defaults.map(row => row.permission_id), ...input.grants].filter(permission => !input.denies.includes(permission)));
+    const roleEscalation = [...proposedPermissions].filter(permission => !req.auth!.permissions.has(permission));
+    if (roleEscalation.length) throw forbidden(`The proposed role would give access you do not hold: ${roleEscalation.join(', ')}.`);
+  }
 
   if (input.productIds.length) {
     const found = await many<{ id: string }>('SELECT id FROM loan_products WHERE id = ANY($1::text[])', [input.productIds]);
     if (found.length !== new Set(input.productIds).size) throw badRequest('One or more loan products do not exist.');
   }
 
+  const previous = {
+    role: target.role, grants: target.grants, denies: target.denies,
+    productIds: target.product_ids, approvalLimit: target.approval_limit,
+  };
+  const payload = {
+    role: newRole, grants: input.grants, denies: input.denies,
+    productIds: [...new Set(input.productIds)], approvalLimit: input.approvalLimit,
+  };
+  if (JSON.stringify(previous) === JSON.stringify(payload)) return res.json({ status: 'unchanged', staff: presentStaff(target) });
+  const requestId = newId('gov');
   await transaction(async client => {
-    await client.query('DELETE FROM user_permissions WHERE user_id = $1', [target.id]);
-    for (const permission of input.grants) {
-      await client.query(`INSERT INTO user_permissions (user_id, permission_id, effect, granted_by) VALUES ($1, $2, 'grant', $3)`, [target.id, permission, req.auth!.userId]);
-    }
-    for (const permission of input.denies) {
-      await client.query(`INSERT INTO user_permissions (user_id, permission_id, effect, granted_by) VALUES ($1, $2, 'deny', $3)`, [target.id, permission, req.auth!.userId]);
-    }
-    await client.query('DELETE FROM user_product_access WHERE user_id = $1', [target.id]);
-    for (const productId of new Set(input.productIds)) {
-      await client.query('INSERT INTO user_product_access (user_id, product_id, granted_by) VALUES ($1, $2, $3)', [target.id, productId, req.auth!.userId]);
-    }
-    await client.query('UPDATE users SET approval_limit = $2, updated_at = now() WHERE id = $1', [target.id, input.approvalLimit]);
-
-    const diff = (before: string[], after: string[]) => ({
-      added: after.filter(item => !before.includes(item)),
-      removed: before.filter(item => !after.includes(item)),
-    });
+    await client.query(
+      `INSERT INTO governance_change_requests (id, change_type, entity_id, requested_by, payload, previous_value)
+       VALUES ($1, 'access', $2, $3, $4, $5)`, [requestId, target.id, req.auth!.userId, payload, previous],
+    );
+    await client.query(`INSERT INTO governance_change_events (request_id, actor_id, event_type) VALUES ($1, $2, 'submitted')`, [requestId, req.auth!.userId]);
     await audit(req, {
-      action: 'permissions.update', entityType: 'user', entityId: target.id,
-      summary: `Updated access for ${target.name}.`,
-      metadata: {
-        grants: diff(target.grants, input.grants),
-        denies: diff(target.denies, input.denies),
-        products: diff(target.product_ids, input.productIds),
-        approvalLimit: { from: target.approval_limit, to: input.approvalLimit },
-      },
+      action: 'governance.change_submitted', entityType: 'user', entityId: target.id,
+      summary: `Submitted proposed access changes for ${target.name}; they are pending independent approval.`,
+      metadata: { requestId, previous, proposed: payload },
     }, client);
   });
-
-  const updated = await one(`${STAFF_SELECT} WHERE u.id = $1`, [target.id]);
-  const effective = await loadEffectivePermissions(target.id, target.role);
-  res.json({ ...presentStaff(updated), effectivePermissions: [...effective].sort() });
+  res.status(202).json({ status: 'pending_approval', requestId, staff: presentStaff(target) });
 }));

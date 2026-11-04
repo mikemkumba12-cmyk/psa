@@ -68,9 +68,10 @@ function ProductEditor({ product, onClose, onSaved }: { product: Product | null;
       collateralNotes: form.collateralNotes || null, termsConfirmed: form.termsConfirmed, effectiveFrom: nul(form.effectiveFrom), effectiveTo: nul(form.effectiveTo),
     };
     try {
-      if (product) await api(`/api/products/${product.id}`, { method: 'PATCH', body: { ...shared, status: form.status } });
-      else await api('/api/products', { body: { ...shared, code: form.code, category: form.category, borrowerType: form.borrowerType } });
-      toast('Product saved.');
+      const result = await (product
+        ? api<{ status?: string }>(`/api/products/${product.id}`, { method: 'PATCH', body: { ...shared, status: form.status } })
+        : api<{ status?: string }>('/api/products', { body: { ...shared, code: form.code, category: form.category, borrowerType: form.borrowerType } }));
+      toast(result.status === 'pending_approval' ? 'Product change submitted for independent approval.' : 'Product is unchanged.');
       onSaved();
     } catch (caught) {
       setError(caught instanceof ApiError ? caught : new ApiError(0, 'Could not save.'));

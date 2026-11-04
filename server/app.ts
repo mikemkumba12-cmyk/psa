@@ -23,6 +23,7 @@ import { reportsRouter } from './modules/reports/reports';
 import { messagesRouter } from './modules/messages/messages.routes';
 import { auditRouter } from './modules/audit/audit.routes';
 import { payrollRouter } from './modules/payroll/payroll.routes';
+import { governanceRouter } from './modules/governance/governance.routes';
 
 /** Builds the Express application. Kept separate from listen() so tests can start it on any port. */
 export function createApp() {
@@ -48,7 +49,7 @@ export function createApp() {
   app.use('/api', requireAuth);
   for (const router of [
     documentsRouter, notificationsRouter, staffRouter, productsRouter, settingsRouter, customersRouter,
-    membersRouter, businessesRouter, applicationsRouter, transactionsRouter, assistantRouter, knowledgeRouter,
+    membersRouter, businessesRouter, applicationsRouter, transactionsRouter, assistantRouter, knowledgeRouter, governanceRouter,
     reportsRouter, messagesRouter, auditRouter, payrollRouter,
   ]) {
     app.use('/api', router);

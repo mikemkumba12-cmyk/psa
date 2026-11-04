@@ -11,6 +11,7 @@ import { PortalLayout, type NavSection } from './layouts/PortalLayout';
 import { LandingPage } from './pages/public/LandingPage';
 import { LoginPage } from './pages/public/LoginPage';
 import { RegisterPage } from './pages/public/RegisterPage';
+import { PrivacyNoticePage } from './pages/public/PrivacyNoticePage';
 import { ActivatePage, ForgotPasswordPage } from './pages/public/RecoveryPages';
 import { ClientHome } from './pages/client/ClientHome';
 import { ApplyPage } from './pages/client/ApplyPage';
@@ -30,7 +31,7 @@ import { StaffPayroll } from './pages/staff/StaffPayroll';
 import { StaffReports } from './pages/staff/StaffReports';
 import { StaffProducts } from './pages/staff/StaffProducts';
 import { StaffAdmin } from './pages/staff/StaffAdmin';
-import { StaffAudit, StaffKnowledge, StaffSettings } from './pages/staff/StaffSystem';
+import { StaffAudit, StaffGovernance, StaffKnowledge, StaffSettings } from './pages/staff/StaffSystem';
 
 function RequireRole({ staff, children }: { staff: boolean; children: React.ReactNode }) {
   const { profile, loading } = useAuth();
@@ -93,6 +94,7 @@ function StaffPortal() {
       ...(any('staff.manage', 'permissions.manage') ? [{ to: '/staff/team', label: 'Staff & permissions', icon: ShieldCheck }] : []),
       ...(can('knowledge.manage') ? [{ to: '/staff/knowledge', label: 'Assistant knowledge', icon: BookOpen }] : []),
       ...(can('audit.view') ? [{ to: '/staff/audit', label: 'Audit log', icon: ScrollText }] : []),
+      ...(any('permissions.manage', 'settings.manage', 'products.manage', 'staff.manage') ? [{ to: '/staff/governance', label: 'Governance approvals', icon: ShieldCheck }] : []),
       ...(can('settings.manage') ? [{ to: '/staff/settings/institution', label: 'Institution settings', icon: Settings }] : []),
     ] },
     { items: [{ to: '/staff/settings', label: 'My account', icon: Settings }] },
@@ -111,6 +113,7 @@ function AppRoutes() {
       {/* A signed-in customer sees an explanation on the staff page instead of a silent redirect. */}
       <Route path="/staff/login" element={profile && profile.role !== 'customer' ? <Navigate to="/staff" replace /> : <LoginPage staff />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/privacy" element={<PrivacyNoticePage />} />
       <Route path="/activate" element={home ? <Navigate to={home} replace /> : <ActivatePage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
 
@@ -153,6 +156,7 @@ function AppRoutes() {
         <Route path="team" element={<Allow permission={['staff.manage', 'permissions.manage']}><StaffAdmin /></Allow>} />
         <Route path="knowledge" element={<Allow permission="knowledge.manage"><StaffKnowledge /></Allow>} />
         <Route path="audit" element={<Allow permission="audit.view"><StaffAudit /></Allow>} />
+        <Route path="governance" element={<Allow permission={['permissions.manage', 'settings.manage', 'products.manage', 'staff.manage']}><StaffGovernance /></Allow>} />
         <Route path="settings/institution" element={<Allow permission="settings.manage"><StaffSettings /></Allow>} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="notifications" element={<NotificationsPage />} />

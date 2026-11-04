@@ -53,7 +53,7 @@ const productFields = {
   effectiveTo: z.iso.date().nullable(),
 };
 
-const createSchema = z.object({
+export const productCreateSchema = z.object({
   code: z.string().trim().toUpperCase().regex(/^[A-Z0-9_]{3,50}$/, 'Use 3–50 letters, digits or underscores.'),
   category: z.enum(['payroll', 'personal', 'working_capital', 'enterprise', 'asset_financing', 'invoice_discounting', 'order_financing']),
   borrowerType: z.enum(['individual', 'business']),
@@ -64,7 +64,7 @@ const createSchema = z.object({
   effectiveFrom: true, effectiveTo: true, interestMethod: true, repaymentFrequency: true,
 });
 
-const updateSchema = z.object({
+export const productUpdateSchema = z.object({
   ...productFields,
   status: z.enum(['draft', 'active', 'suspended', 'retired']),
 }).partial().strict();
@@ -76,7 +76,7 @@ async function assertDocumentCodes(codes: string[] | undefined): Promise<void> {
   if (unknown.length) throw badRequest(`Unknown document types: ${unknown.join(', ')}.`);
 }
 
-const COLUMN_FOR: Record<string, string> = {
+export const PRODUCT_COLUMN_FOR: Record<string, string> = {
   name: 'name', description: 'description', minAmount: 'min_amount', maxAmount: 'max_amount',
   minTermMonths: 'min_term_months', maxTermMonths: 'max_term_months', interestMethod: 'interest_method',
   interestRateMonthly: 'interest_rate_monthly', repaymentFrequency: 'repayment_frequency', fees: 'fees',
@@ -86,37 +86,32 @@ const COLUMN_FOR: Record<string, string> = {
 };
 
 productsRouter.post('/products', requirePermission('products.manage'), route(async (req, res) => {
-  const input = parse(createSchema, req.body);
+  const input = parse(productCreateSchema, req.body);
   await assertDocumentCodes(input.requiredDocuments);
   const id = newId('prd');
+  const duplicate = await many('SELECT id FROM loan_products WHERE code = $1', [input.code]);
+  if (duplicate.length) throw badRequest('A product with this code already exists.');
   await transaction(async client => {
     await client.query(
-      `INSERT INTO loan_products (id, code, name, category, borrower_type, description, min_amount, max_amount, min_term_months,
-                                  max_term_months, interest_method, interest_rate_monthly, repayment_frequency, fees, required_documents,
-                                  members_only, collateral_required, collateral_notes, terms_confirmed, effective_from, effective_to,
-                                  status, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,'draft',$22,$22)`,
-      [id, input.code, input.name, input.category, input.borrowerType, input.description ?? '', input.minAmount ?? null,
-        input.maxAmount ?? null, input.minTermMonths ?? null, input.maxTermMonths ?? null, input.interestMethod ?? 'reducing_balance',
-        input.interestRateMonthly ?? null, input.repaymentFrequency ?? 'monthly', JSON.stringify(input.fees ?? []),
-        input.requiredDocuments ?? [], input.membersOnly ?? input.borrowerType === 'business', input.collateralRequired ?? false,
-        input.collateralNotes ?? null, input.termsConfirmed ?? false, input.effectiveFrom ?? null, input.effectiveTo ?? null,
-        req.auth!.userId],
+      `INSERT INTO governance_change_requests (id, change_type, entity_id, requested_by, payload, previous_value)
+       VALUES ($1, 'product', $2, $3, $4, 'null'::jsonb)`,
+      [id, id, req.auth!.userId, { operation: 'create', product: input }],
     );
-    await audit(req, { action: 'product.create', entityType: 'loan_product', entityId: id, summary: `Created draft product ${input.name}.`, metadata: { code: input.code } }, client);
+    await client.query(`INSERT INTO governance_change_events (request_id, actor_id, event_type) VALUES ($1, $2, 'submitted')`, [id, req.auth!.userId]);
+    await audit(req, { action: 'governance.change_submitted', entityType: 'loan_product', entityId: id, summary: `Submitted draft product ${input.name} for independent approval.`, metadata: { requestId: id, code: input.code } }, client);
   });
-  res.status(201).json(presentProduct((await getProduct(id))!, { includeAdmin: true }));
+  res.status(202).json({ id, status: 'pending_approval', name: input.name, code: input.code });
 }));
 
 productsRouter.patch('/products/:id', requirePermission('products.manage'), route(async (req, res) => {
-  const input = parse(updateSchema, req.body);
+  const input = parse(productUpdateSchema, req.body);
   const existing = await getProduct(req.params.id);
   if (!existing) throw notFound('Product not found.');
   await assertDocumentCodes(input.requiredDocuments);
 
   // Validate the product as it will look after the change.
   const next = { ...existing } as ProductRow & Record<string, unknown>;
-  for (const [key, value] of Object.entries(input)) next[COLUMN_FOR[key]] = value as never;
+  for (const [key, value] of Object.entries(input)) next[PRODUCT_COLUMN_FOR[key]] = value as never;
   if (next.status === 'active') {
     const blockers = activationBlockers(next);
     if (blockers.length) throw unprocessable('This product cannot be active yet.', blockers.map(message => ({ field: 'status', message })));
@@ -126,28 +121,31 @@ productsRouter.patch('/products/:id', requirePermission('products.manage'), rout
 
   const entries = Object.entries(input);
   if (!entries.length) throw badRequest('Nothing to update.');
-  const sets = entries.map(([key], index) => `${COLUMN_FOR[key]} = $${index + 2}`);
-  const values = entries.map(([key, value]) => (key === 'fees' ? JSON.stringify(value) : value));
   const changes: Record<string, { from: unknown; to: unknown }> = {};
   for (const [key, value] of entries) {
-    const before = (existing as any)[COLUMN_FOR[key]];
+    const before = (existing as any)[PRODUCT_COLUMN_FOR[key]];
     if (JSON.stringify(before) !== JSON.stringify(value)) changes[key] = { from: before, to: value };
   }
+  if (!Object.keys(changes).length) return res.json({ id: existing.id, status: 'unchanged' });
+  const pending = await many('SELECT id FROM governance_change_requests WHERE change_type = $1 AND entity_id = $2 AND status = $3', ['product', existing.id, 'pending']);
+  if (pending.length) throw badRequest('There is already a pending governance request for this product.');
 
+  const requestId = newId('gov');
   await transaction(async client => {
     await client.query(
-      `UPDATE loan_products SET ${sets.join(', ')}, updated_by = $${entries.length + 2}, updated_at = now() WHERE id = $1`,
-      [existing.id, ...values, req.auth!.userId],
+      `INSERT INTO governance_change_requests (id, change_type, entity_id, requested_by, payload, previous_value)
+       VALUES ($1, 'product', $2, $3, $4, $5)`,
+      [requestId, existing.id, req.auth!.userId, { operation: 'update', patch: input }, existing],
     );
-    const statusChange = input.status && input.status !== existing.status;
+    await client.query(`INSERT INTO governance_change_events (request_id, actor_id, event_type) VALUES ($1, $2, 'submitted')`, [requestId, req.auth!.userId]);
     await audit(req, {
-      action: statusChange ? `product.${input.status === 'active' ? 'activate' : input.status}` : 'product.update',
+      action: 'governance.change_submitted',
       entityType: 'loan_product', entityId: existing.id,
-      summary: `Updated product ${existing.name}${statusChange ? ` (status ${existing.status} → ${input.status})` : ''}.`,
-      metadata: { changes },
+      summary: `Submitted changes to product ${existing.name} for independent approval.`,
+      metadata: { requestId, changes },
     }, client);
   });
-  res.json(presentProduct((await getProduct(existing.id))!, { includeAdmin: true }));
+  res.status(202).json({ id: existing.id, status: 'pending_approval', changes });
 }));
 
 const quoteSchema = z.object({

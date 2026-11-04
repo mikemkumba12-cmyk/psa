@@ -83,6 +83,10 @@ export function LandingPage() {
             </ul>
           )}
         </section>
+
+        <footer className="border-t border-line bg-surface px-4 py-6 text-center text-sm text-ink-muted">
+          <Link className="font-semibold text-brand-700 hover:underline" to="/privacy">Privacy Notice</Link>
+        </footer>
       </main>
 
       <footer className="border-t border-line bg-surface">

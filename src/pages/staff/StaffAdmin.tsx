@@ -42,7 +42,7 @@ export function StaffAdmin() {
       {selected && <AccessEditor staff={selected} onClose={() => setSelected(null)} onChanged={() => { void reload(); }} onTempPassword={(name, password) => setTempPassword({ name, password })} />}
       <Modal open={Boolean(tempPassword)} onClose={() => setTempPassword(null)} title="Temporary password" size="sm"
         footer={<Button onClick={() => setTempPassword(null)}>Done</Button>}>
-        <p className="text-sm text-ink-muted">Give this to {tempPassword?.name} in person or by phone. It is shown only once and must be changed at first sign-in.</p>
+        <p className="text-sm text-ink-muted">The account request must be approved before {tempPassword?.name} can sign in. After approval, give this password to them securely. It is shown only once and must be changed at first sign-in.</p>
         <p className="mt-3 select-all break-all rounded-lg bg-surface-muted p-3 text-center font-mono text-lg font-semibold">{tempPassword?.password}</p>
       </Modal>
     </>
@@ -125,9 +125,8 @@ function AccessEditor({ staff, onClose, onChanged, onTempPassword }: { staff: St
     setPending(true);
     setError(null);
     try {
-      if (role && role !== staff.role) await api(`/api/admin/staff/${staff.id}`, { method: 'PATCH', body: { role } });
-      await api(`/api/admin/staff/${staff.id}/access`, { method: 'PUT', body: { grants: effGrants, denies: effDenies, productIds: effProducts, approvalLimit: effLimit === '' ? null : effLimit } });
-      toast('Access updated. It applies immediately.');
+      const result = await api<{ status?: string }>(`/api/admin/staff/${staff.id}/access`, { method: 'PUT', body: { grants: effGrants, denies: effDenies, productIds: effProducts, approvalLimit: effLimit === '' ? null : effLimit, role: effRole } });
+      toast(result.status === 'pending_approval' ? 'Access change submitted for independent approval.' : 'Access is unchanged.');
       onChanged();
       onClose();
     } catch (caught) {

@@ -21,6 +21,7 @@ export function AuthShell({ title, subtitle, children, footer, wide }: { title: 
             <div className="mt-6">{children}</div>
           </div>
           {footer && <div className="mt-4 text-center text-sm text-ink-muted">{footer}</div>}
+          <p className="mt-4 text-center text-xs text-ink-subtle">Read our <Link className="font-semibold text-brand-700 hover:underline" to="/privacy">Privacy Notice</Link>.</p>
           {branding?.regulatoryStatement && <p className="mt-6 text-center text-xs text-ink-subtle">{branding.regulatoryStatement}</p>}
         </div>
       </main>
